@@ -2,68 +2,23 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User.js';
-import { Otp } from '../models/Otp.js';
 import { authenticate } from '../middleware/auth.js';
 import { config } from '../config/index.js';
-import { sendOtpEmail } from '../services/emailService.js';
 
 const router = express.Router();
-const OTP_EXPIRY_MINUTES = 10;
-const OTP_LENGTH = 6;
 
 function signToken(userId) {
   return jwt.sign({ userId }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
 }
 
-function generateOtp() {
-  let otp = '';
-  for (let i = 0; i < OTP_LENGTH; i++) otp += Math.floor(Math.random() * 10).toString();
-  return otp;
-}
-
-// POST /api/auth/send-otp - send OTP to email for registration
-router.post('/send-otp', async (req, res) => {
-  try {
-    const email = (req.body.email || '').trim().toLowerCase();
-    if (!email) return res.status(400).json({ message: 'Email is required' });
-    const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ message: 'Email already registered' });
-    const otp = generateOtp();
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
-    await Otp.deleteMany({ email });
-    await Otp.create({ email, otp, expiresAt });
-    const { sentViaEmail } = await sendOtpEmail(email, otp);
-    res.json({
-      message: sentViaEmail ? 'OTP sent to your email' : 'OTP generated. Check the backend server console/terminal for your code (SMTP not configured).',
-      sentViaEmail,
-      expiresIn: OTP_EXPIRY_MINUTES * 60,
-    });
-  } catch (err) {
-    const msg = err?.message || String(err) || 'Failed to send OTP';
-    console.error('[send-otp]', msg, err);
-    res.status(500).json({ message: msg });
-  }
-});
-
-// POST /api/auth/register - requires valid OTP for email
+// POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, username, displayName, otp } = req.body;
+    const { email, password, username, displayName } = req.body;
     const emailNorm = (email || '').trim().toLowerCase();
     if (!emailNorm || !password || !username) {
       return res.status(400).json({ message: 'Email, password, and username are required' });
     }
-    if (!otp || String(otp).trim().length !== OTP_LENGTH) {
-      return res.status(400).json({ message: 'Valid 6-digit OTP is required. Please request a new OTP from the register page.' });
-    }
-    const otpDoc = await Otp.findOne({ email: emailNorm }).sort({ createdAt: -1 });
-    if (!otpDoc) return res.status(400).json({ message: 'No OTP found for this email. Please request a new OTP.' });
-    if (otpDoc.otp !== String(otp).trim()) return res.status(400).json({ message: 'Invalid OTP.' });
-    if (new Date() > otpDoc.expiresAt) {
-      await Otp.deleteOne({ _id: otpDoc._id });
-      return res.status(400).json({ message: 'OTP has expired. Please request a new OTP.' });
-    }
-    await Otp.deleteOne({ _id: otpDoc._id });
     const existing = await User.findOne({ $or: [{ email: emailNorm }, { username }] });
     if (existing) {
       return res.status(400).json({ message: existing.email === emailNorm ? 'Email already registered' : 'Username taken' });
