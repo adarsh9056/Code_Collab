@@ -4,6 +4,7 @@ import { config } from '../config/index.js';
 
 let transporter = null;
 let resendClient = null;
+const RESEND_DEFAULT_FROM = 'onboarding@resend.dev';
 
 function getTransporter() {
   if (transporter !== null) return transporter;
@@ -55,13 +56,15 @@ export async function sendOtpEmail(toEmail, otp) {
     <p>If you didn't request this, please ignore this email.</p>
   `;
 
-  const from = (config.emailFrom || config.smtpUser || 'onboarding@resend.dev').trim();
+  const configuredFrom = (config.emailFrom || config.smtpUser || '').trim();
+  const resendFrom = !configuredFrom || /@gmail\.com$/i.test(configuredFrom) ? RESEND_DEFAULT_FROM : configuredFrom;
+  const smtpFrom = configuredFrom || config.smtpUser || 'noreply@codecollab.local';
 
   const resend = getResendClient();
   if (resend) {
     try {
       const response = await resend.emails.send({
-        from,
+        from: resendFrom,
         to: toEmail,
         subject,
         text,
@@ -85,7 +88,7 @@ export async function sendOtpEmail(toEmail, otp) {
   }
 
   try {
-    await smtp.sendMail({ from, to: toEmail, subject, text, html });
+    await smtp.sendMail({ from: smtpFrom, to: toEmail, subject, text, html });
     console.log('[Email] OTP sent to', toEmail);
     return { sentViaEmail: true };
   } catch (err) {
