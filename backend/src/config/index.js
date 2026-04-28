@@ -24,6 +24,7 @@ export const config = {
   smtpUser: process.env.SMTP_USER || '',
   smtpPass: process.env.SMTP_PASS || '',
   emailFrom: process.env.EMAIL_FROM || process.env.SMTP_USER || '',
+  resendApiKey: process.env.RESEND_API_KEY || '',
 };
 
 /**

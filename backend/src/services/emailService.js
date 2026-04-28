@@ -1,7 +1,9 @@
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { config } from '../config/index.js';
 
 let transporter = null;
+let resendClient = null;
 
 function getTransporter() {
   if (transporter !== null) return transporter;
@@ -17,14 +19,27 @@ function getTransporter() {
   return transporter;
 }
 
+function getResendClient() {
+  if (resendClient !== null) return resendClient;
+  const key = (config.resendApiKey || '').trim();
+  if (!key) return null;
+  resendClient = new Resend(key);
+  return resendClient;
+}
+
 /** Call once at startup to log email status */
 export function logEmailStatus() {
-  const trans = getTransporter();
-  if (trans) {
+  const resend = getResendClient();
+  if (resend) {
+    console.log('[Email] Resend configured — OTP emails will be sent to users.');
+    return;
+  }
+  const smtp = getTransporter();
+  if (smtp) {
     console.log('[Email] SMTP configured — OTP emails will be sent to users.');
     return;
   }
-  console.log('[Email] SMTP not configured (set SMTP_USER and SMTP_PASS in backend/.env). OTP will be printed in the server console when you click Send OTP.');
+  console.log('[Email] No email provider configured (set RESEND_API_KEY or SMTP_USER/SMTP_PASS). OTP will be printed in server logs for development.');
 }
 
 /**
@@ -40,14 +55,37 @@ export async function sendOtpEmail(toEmail, otp) {
     <p>If you didn't request this, please ignore this email.</p>
   `;
 
-  const trans = getTransporter();
-  if (!trans) {
-    console.log('[Email] OTP for', toEmail, ':', otp, '(Set SMTP_USER and SMTP_PASS in backend/.env to send real emails — see RUN_INSTRUCTIONS.md)');
+  const from = (config.emailFrom || config.smtpUser || 'onboarding@resend.dev').trim();
+
+  const resend = getResendClient();
+  if (resend) {
+    try {
+      const response = await resend.emails.send({
+        from,
+        to: toEmail,
+        subject,
+        text,
+        html,
+      });
+      if (response?.error) {
+        throw new Error(response.error.message || 'Resend API error');
+      }
+      console.log('[Email] OTP sent via Resend to', toEmail);
+      return { sentViaEmail: true };
+    } catch (err) {
+      console.error('[Email] Resend send failed:', err.message);
+      throw new Error(err.message || 'Failed to send OTP via Resend');
+    }
+  }
+
+  const smtp = getTransporter();
+  if (!smtp) {
+    console.log('[Email] OTP for', toEmail, ':', otp, '(Set RESEND_API_KEY or SMTP_USER/SMTP_PASS to send real emails)');
     return { sentViaEmail: false };
   }
-  const from = (config.emailFrom || config.smtpUser || 'noreply@codecollab.local').trim();
+
   try {
-    await trans.sendMail({ from, to: toEmail, subject, text, html });
+    await smtp.sendMail({ from, to: toEmail, subject, text, html });
     console.log('[Email] OTP sent to', toEmail);
     return { sentViaEmail: true };
   } catch (err) {
