@@ -8,7 +8,7 @@ Real-time collaborative coding platform for DSA practice, pair programming, and 
 - **Backend**: Node.js, Express, Socket.IO, JWT auth, MongoDB (Mongoose)
 - **Code execution**: Node `vm` (JavaScript); placeholder for Python/C++/Java via external runner
 
-## Features
+## Feature
 
 - **Collab mode**: Shared room, real-time code sync, run/submit, chat, optional voice (WebRTC)
 - **Contest mode**: 3 random problems, 25-min timer, per-problem editor, leaderboard
